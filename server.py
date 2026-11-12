@@ -214,6 +214,24 @@ def server_pubkey():
     except Exception: return "(개인키 미설정)"
 
 
+def signed_update():
+    """자동 업데이트 매니페스트(서명됨). 값은 환경변수로 관리:
+       UPDATE_VERSION, UPDATE_URL, UPDATE_SHA256, UPDATE_NOTES"""
+    payload = {
+        "version": os.environ.get("UPDATE_VERSION", "").strip(),
+        "url":     os.environ.get("UPDATE_URL", "").strip(),
+        "sha256":  os.environ.get("UPDATE_SHA256", "").strip().lower(),
+        "notes":   os.environ.get("UPDATE_NOTES", "").strip(),
+    }
+    data = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    try:
+        sk = bytes.fromhex(PRIV_HEX); pk = ED.publickey(sk)
+        sig = ED.sign(data.encode("utf-8"), sk, pk).hex()
+    except Exception as e:
+        return json.dumps({"error": "server key not set: %s" % e}).encode("utf-8")
+    return json.dumps({"data": data, "sig": sig}, ensure_ascii=False).encode("utf-8")
+
+
 # ---------------------------------------------------------------- 관리자 화면
 def _esc(s): return html.escape(str(s or ""))
 
@@ -331,6 +349,8 @@ class H(BaseHTTPRequestHandler):
             return self._send(200, "ok", "text/plain; charset=utf-8")
         if p == "/allowlist.json":
             return self._send(200, signed_allowlist(), "application/json; charset=utf-8")
+        if p == "/update.json":
+            return self._send(200, signed_update(), "application/json; charset=utf-8")
         if p in ("/", "/admin"):
             if not self._auth_ok(): return self._need_auth()
             return self._send(200, admin_html())
